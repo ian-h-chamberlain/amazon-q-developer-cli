@@ -37,6 +37,8 @@ pub enum TransportType {
     Stdio,
     /// HTTP transport for web-based communication
     Http,
+    /// Unix domain socket transport for local communication
+    Unix,
 }
 
 impl Default for TransportType {
@@ -81,6 +83,9 @@ pub struct CustomToolConfig {
     /// A list of environment variables to run the command with
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env: Option<HashMap<String, String>>,
+    /// Unix domain socket path for Unix transport
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub socket_path: Option<String>,
     /// Timeout for each mcp request in ms
     #[serde(default = "default_timeout")]
     pub timeout: u64,

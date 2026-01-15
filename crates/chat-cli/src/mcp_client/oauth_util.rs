@@ -176,6 +176,7 @@ pub fn get_default_scopes() -> &'static [&'static str] {
 enum TransportType {
     Http,
     Sse,
+    Unix,
 }
 
 enum HttpServiceBuilderState {
@@ -198,6 +199,7 @@ pub struct HttpServiceBuilder<'a> {
     pub headers: &'a HashMap<String, String>,
     pub oauth_config: &'a Option<crate::cli::chat::tools::custom_tool::OAuthConfig>,
     pub messenger: &'a dyn Messenger,
+    pub socket_path: Option<&'a str>,
 }
 
 impl<'a> HttpServiceBuilder<'a> {
@@ -211,6 +213,7 @@ impl<'a> HttpServiceBuilder<'a> {
         headers: &'a HashMap<String, String>,
         oauth_config: &'a Option<crate::cli::chat::tools::custom_tool::OAuthConfig>,
         messenger: &'a dyn Messenger,
+        socket_path: Option<&'a str>,
     ) -> Self {
         Self {
             server_name,
@@ -221,6 +224,7 @@ impl<'a> HttpServiceBuilder<'a> {
             headers,
             oauth_config,
             messenger,
+            socket_path,
         }
     }
 
@@ -237,9 +241,16 @@ impl<'a> HttpServiceBuilder<'a> {
             headers,
             oauth_config,
             messenger,
+            socket_path,
         } = self;
 
-        let mut state = HttpServiceBuilderState::AttemptConnection(TransportType::Http, false);
+        let transport_type = if socket_path.is_some() {
+            TransportType::Unix
+        } else {
+            TransportType::Http
+        };
+
+        let mut state = HttpServiceBuilderState::AttemptConnection(transport_type, false);
         let cred_dir = PathResolver::new(os).global().mcp_auth_dir()?;
         let url = Url::from_str(url)?;
         let key = compute_key(&url);
@@ -248,6 +259,12 @@ impl<'a> HttpServiceBuilder<'a> {
         let mut auth_client = None::<AuthClient<Client>>;
 
         let mut client_builder = reqwest::ClientBuilder::new().timeout(std::time::Duration::from_millis(timeout));
+
+        // Add Unix socket support if configured
+        if let Some(socket_path) = self.socket_path {
+            client_builder = client_builder.unix_socket(socket_path);
+        }
+
         if !headers.is_empty() {
             let headers = HeaderMap::try_from(headers).map_err(|e| OauthUtilError::Http(e.to_string()))?;
             client_builder = client_builder.default_headers(headers);
@@ -368,6 +385,32 @@ impl<'a> HttpServiceBuilder<'a> {
                                     },
                                 }
                             },
+                            TransportType::Unix => {
+                                info!("## mcp: attempting Unix socket handshake for {server_name}");
+                                let transport = StreamableHttpClientTransport::with_client(
+                                    ac.clone(),
+                                    StreamableHttpClientTransportConfig {
+                                        uri: url.as_str().into(),
+                                        allow_stateless: true,
+                                        ..Default::default()
+                                    },
+                                );
+
+                                match service.clone().into_dyn().serve(transport).await {
+                                    Ok(service) => {
+                                        let auth_client_wrapper = AuthClientWrapper::new(cred_full_path, ac);
+                                        return Ok((service, Some(auth_client_wrapper)));
+                                    },
+                                    Err(e) => {
+                                        // Unix socket transport doesn't have fallback options
+                                        error!(
+                                            "## mcp: Unix socket handshake attempted failed for {server_name}: {:?}. Aborting",
+                                            e
+                                        );
+                                        state = HttpServiceBuilderState::Exhausted;
+                                    },
+                                }
+                            },
                         }
                     } else {
                         info!(
@@ -412,6 +455,29 @@ impl<'a> HttpServiceBuilder<'a> {
                                     Err(e) => {
                                         error!(
                                             "## mcp: open sse handshake attempted failed for {server_name}: {:?}. Aborting",
+                                            e
+                                        );
+                                        state = HttpServiceBuilderState::Exhausted;
+                                    },
+                                }
+                            },
+                            TransportType::Unix => {
+                                info!("## mcp: attempting Unix socket handshake for {server_name}");
+                                let transport = StreamableHttpClientTransport::with_client(
+                                    reqwest_client.clone(),
+                                    StreamableHttpClientTransportConfig {
+                                        uri: url.as_str().into(),
+                                        allow_stateless: true,
+                                        ..Default::default()
+                                    },
+                                );
+
+                                match service.clone().into_dyn().serve(transport).await {
+                                    Ok(service) => return Ok((service, None)),
+                                    Err(e) => {
+                                        // Unix socket transport doesn't have fallback options
+                                        error!(
+                                            "## mcp: Unix socket handshake attempted failed for {server_name}: {:?}. Aborting",
                                             e
                                         );
                                         state = HttpServiceBuilderState::Exhausted;

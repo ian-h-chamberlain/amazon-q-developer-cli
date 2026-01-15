@@ -398,17 +398,25 @@ impl McpClientService {
             ..
         } = &self.config;
 
-        let is_malformed_http = matches!(r#type, TransportType::Http) && url.is_empty();
-        let is_malformed_stdio = matches!(r#type, TransportType::Stdio) && command_as_str.is_empty();
-
-        if is_malformed_http {
-            return Err(McpClientError::MalformedConfig(
-                "MCP config is malformed: transport type is specified to be http but url is empty",
-            ));
-        } else if is_malformed_stdio {
-            return Err(McpClientError::MalformedConfig(
-                "MCP config is malformed: transport type is specified to be stdio but command is empty",
-            ));
+        match r#type {
+            TransportType::Http if url.is_empty() => {
+                return Err(McpClientError::MalformedConfig(
+                    "MCP config is malformed: transport type is specified to be http but url is empty",
+                ));
+            },
+            TransportType::Stdio if command_as_str.is_empty() => {
+                return Err(McpClientError::MalformedConfig(
+                    "MCP config is malformed: transport type is specified to be stdio but command is empty",
+                ));
+            },
+            TransportType::Unix => {
+                if self.config.socket_path.as_ref().map_or(true, |p| p.is_empty()) {
+                    return Err(McpClientError::MalformedConfig(
+                        "MCP config is malformed: transport type is specified to be unix but socket_path is empty",
+                    ));
+                }
+            },
+            _ => {},
         }
 
         match r#type {
@@ -462,8 +470,52 @@ impl McpClientService {
                     *value = substitute_env_vars(value, &os.env);
                 }
 
-                let http_service_builder =
-                    HttpServiceBuilder::new(url, os, url, *timeout, scopes, &processed_headers, oauth, messenger);
+                let http_service_builder = HttpServiceBuilder::new(
+                    url,
+                    os,
+                    url,
+                    *timeout,
+                    scopes,
+                    &processed_headers,
+                    oauth,
+                    messenger,
+                    None,
+                );
+
+                let (service, auth_client_wrapper) = http_service_builder.try_build(&self).await?;
+
+                Ok((service, None, auth_client_wrapper))
+            },
+            TransportType::Unix => {
+                let CustomToolConfig {
+                    socket_path,
+                    oauth_scopes: scopes,
+                    oauth,
+                    timeout,
+                    ..
+                } = &self.config;
+
+                let socket_path = socket_path
+                    .as_ref()
+                    .ok_or_else(|| McpClientError::MalformedConfig("Socket path is required for Unix transport"))?;
+
+                // Use localhost URL for Unix sockets (socket path overrides host)
+                let url = "http://localhost";
+
+                // Process environment variables in headers (empty for Unix sockets)
+                let processed_headers = std::collections::HashMap::new();
+
+                let http_service_builder = HttpServiceBuilder::new(
+                    &self.server_name,
+                    os,
+                    url,
+                    *timeout,
+                    scopes,
+                    &processed_headers,
+                    oauth,
+                    messenger,
+                    Some(socket_path),
+                );
 
                 let (service, auth_client_wrapper) = http_service_builder.try_build(&self).await?;
 
@@ -588,7 +640,7 @@ impl Service<RoleClient> for McpClientService {
 /// This is necessitated by the fact that [Service::serve], the command to spawn the process, is
 /// async and does not resolve immediately. This delay can be significant and causes long perceived
 /// latency during start up. However, our current architecture still requires the main chat loop to
-/// have ownership of [RunningService].  
+/// have ownership of [RunningService].
 /// The solution chosen here is to instead spawn a task and have [Service::serve] called there and
 /// return the handle to said task, stored in the [InitializedMcpClient::Pending] variant. This
 /// enum is then flipped lazily (if applicable) when a [RunningService] is needed.

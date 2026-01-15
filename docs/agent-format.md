@@ -112,6 +112,8 @@ Each MCP server configuration can include:
 - `args` (optional): Arguments to pass to the command
 - `env` (optional): Environment variables to set for the server
 - `timeout` (optional): Timeout for each MCP request in milliseconds (default: 120000)
+- `transport` (optional): Transport protocol to use (options: `"stdio"`, `"streamable-http"`, `"unix"`)
+- `socketPath` (optional): Path to Unix domain socket file (required when using `"unix"` transport)
 
 ## Tools Field
 

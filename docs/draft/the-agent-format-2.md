@@ -109,8 +109,12 @@ The `mcpServers` field specifies which MCP servers the agent has access to. MCP 
     },
     "transport": {
       "type": "string",
-      "enum": ["stdio", "streamable-http"],
+      "enum": ["stdio", "streamable-http", "unix"],
       "description": "The transport protocol to use"
+    },
+    "socketPath": {
+      "type": "string",
+      "description": "Path to Unix domain socket file (required for unix transport)"
     },
     "env": {
       "type": "object",
@@ -167,6 +171,11 @@ The `mcpServers` field specifies which MCP servers the agent has access to. MCP 
       "headers": {
         "Authorization": "Bearer ${GITHUB_TOKEN}"
       }
+    },
+    "filesystem-mcp": {
+      "command": "filesystem-server",
+      "transport": "unix",
+      "socketPath": "/tmp/filesystem-mcp.sock"
     }
   }
 }
