@@ -8,26 +8,73 @@
 use std::collections::HashMap;
 use std::process::ExitCode;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc,
+    Mutex,
+};
 
 use agent::agent_loop::types::ToolUseBlock;
 use agent::api_client::ApiClient;
 use agent::mcp::McpManager;
-use agent::protocol::{AgentEvent, AgentStopReason, ContentChunk, SendPromptArgs, ToolCallResult, UpdateEvent};
-use agent::rts::{RtsModel, RtsModelState};
+use agent::protocol::{
+    AgentEvent,
+    AgentStopReason,
+    ContentChunk,
+    SendPromptArgs,
+    ToolCallResult,
+    UpdateEvent,
+};
+use agent::rts::{
+    RtsModel,
+    RtsModelState,
+};
 use agent::tools::BuiltInToolName;
 use agent::types::AgentSnapshot;
-use agent::{Agent, AgentHandle};
+use agent::{
+    Agent,
+    AgentHandle,
+};
 use eyre::Result;
 use sacp::schema::{
-    AgentCapabilities, CancelNotification, ContentBlock, ContentChunk as SacpContentChunk, Diff, Implementation,
-    InitializeRequest, InitializeResponse, NewSessionRequest, NewSessionResponse, PermissionOption, PermissionOptionId,
-    PermissionOptionKind, PromptRequest, PromptResponse, RequestPermissionOutcome, RequestPermissionRequest, SessionId,
-    SessionNotification, SessionUpdate, StopReason, TextContent, ToolCall, ToolCallContent, ToolCallId, ToolCallStatus,
-    ToolCallUpdate, ToolCallUpdateFields, ToolKind, V1,
+    AgentCapabilities,
+    CancelNotification,
+    ContentBlock,
+    ContentChunk as SacpContentChunk,
+    Diff,
+    Implementation,
+    InitializeRequest,
+    InitializeResponse,
+    NewSessionRequest,
+    NewSessionResponse,
+    PermissionOption,
+    PermissionOptionId,
+    PermissionOptionKind,
+    PromptRequest,
+    PromptResponse,
+    RequestPermissionOutcome,
+    RequestPermissionRequest,
+    SessionId,
+    SessionNotification,
+    SessionUpdate,
+    StopReason,
+    TextContent,
+    ToolCall,
+    ToolCallContent,
+    ToolCallId,
+    ToolCallStatus,
+    ToolCallUpdate,
+    ToolCallUpdateFields,
+    ToolKind,
+    V1,
 };
-use sacp::{JrHandlerChain, JrRequestCx};
-use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+use sacp::{
+    JrHandlerChain,
+    JrRequestCx,
+};
+use tokio_util::compat::{
+    TokioAsyncReadCompatExt,
+    TokioAsyncWriteCompatExt,
+};
 use tracing::info;
 
 /// ACP Session that processes requests using Amazon Q agent
@@ -344,7 +391,16 @@ pub async fn execute() -> Result<ExitCode> {
                     async move |_request: InitializeRequest, request_cx| {
                         request_cx.respond(InitializeResponse {
                             protocol_version: V1,
-                            agent_capabilities: AgentCapabilities::default(),
+                            agent_capabilities: AgentCapabilities {
+                                load_session: false,
+                                prompt_capabilities: sacp::schema::PromptCapabilities::default(),
+                                mcp_capabilities: sacp::schema::McpCapabilities {
+                                    http: false,
+                                    sse: false,
+                                    meta: Some(serde_json::json!({"unix": true})),
+                                },
+                                meta: None,
+                            },
                             auth_methods: Vec::new(),
                             agent_info: Some(Implementation {
                                 name: "amazon-q-agent".to_string(),

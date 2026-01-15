@@ -251,6 +251,30 @@ pub struct StreamableHTTPMcpServerConfig {
     #[serde(alias = "timeout")]
     #[serde(default = "default_timeout")]
     pub timeout_ms: u64,
+    /// A boolean flag to denote whether or not to load this mcp server
+    #[serde(default)]
+    pub disabled: bool,
+    /// The \_meta property is reserved by ACP to allow clients and agents to attach additional
+    /// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+    /// these keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub _meta: Option<McpServerConfigMeta>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub struct McpServerConfigMeta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub unix: Option<UnixMcpServerConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UnixMcpServerConfig {
+    /// The path to the Unix socket for MCP server communication
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub socket_path: Option<String>,
 }
 
 pub fn default_timeout() -> u64 {
